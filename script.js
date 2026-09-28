@@ -107,10 +107,19 @@ function playStartupSound() {
 /* ═══ ФОНОВАЯ МУЗЫКА (генеративная) ═══ */
 let musicCtx = null, musicPlaying = false, musicNodes = [];
 
+// Состояние музыки: играет ли реально, заблокировал ли браузер автозапуск, трогал ли пользователь кнопку
+let musicBlocked = false, musicUserChoice = false;
+
 function toggleMusic() {
   // Кнопка ♪ — пауза / продолжение с того же места
+  musicUserChoice = true;
   if (musicPlaying) pauseMusic();
   else resumeMusic();
+}
+
+// Автозапуск после интро (не считается выбором пользователя)
+function autoStartMusic() {
+  if (!musicPlaying && !musicUserChoice) resumeMusic();
 }
 
 function setMusicBtn(on) {
@@ -138,12 +147,37 @@ function pauseMusic() {
 function resumeMusic() {
   if (musicPlaying) return;
   if (musicAudio) {
-    musicAudio.play().catch(e => console.log('Не удалось продолжить музыку:', e));
-    musicPlaying = true;
+    playMusicFile();
   } else {
     startMusic();
+    setMusicBtn(musicPlaying);
   }
+}
+
+// Запуск mp3. Значок ♫ включается сразу, но если браузер отклонил запуск
+// (нужен клик пользователя) или файл не загрузился — возвращаем честное состояние ♪.
+function playMusicFile() {
+  musicPlaying = true;
   setMusicBtn(true);
+  const p = musicAudio.play();
+  if (p && p.catch) p.catch(e => {
+    if (e && e.name === 'AbortError') return;   // прервали паузой — это не ошибка
+    console.log('Музыка не запустилась:', e && e.name ? e.name : e);
+    musicPlaying = false;
+    musicBlocked = true;                         // запустим при первом действии пользователя
+    setMusicBtn(false);
+  });
+}
+
+// Если браузер заблокировал автозапуск — включаем музыку при первом касании/клике/нажатии клавиши
+function initMusicUnlock() {
+  const unlock = (e) => {
+    if (!musicBlocked || musicUserChoice || musicPlaying) return;
+    if (e.target && e.target.closest && e.target.closest('.music-btn')) return;
+    musicBlocked = false;
+    resumeMusic();
+  };
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, unlock, true));
 }
 
 // На время видео эпизода музыка ставится на паузу, после — продолжается с того же места.
@@ -165,8 +199,13 @@ function startMusic() {
       musicAudio = new Audio(КЛИЕНТ.музыка);
       musicAudio.loop = true;
       musicAudio.volume = 0.03;
-      musicAudio.play().catch(e => console.log('Не удалось запустить музыку:', e));
-      musicPlaying = true;
+      musicAudio.addEventListener('error', () => {
+        console.error('Не удалось загрузить файл музыки: ' + КЛИЕНТ.музыка +
+          ' — проверьте, что он лежит в папке media/ и имя совпадает (на GitHub регистр букв важен).');
+        musicPlaying = false;
+        setMusicBtn(false);
+      });
+      playMusicFile();
       return;
     } catch(e) {
       console.log('Ошибка загрузки музыки:', e);
@@ -310,7 +349,7 @@ function showLogo() {
     setTimeout(() => {
       logo.style.display = 'none';
       setTimeout(() => {
-        if (!musicPlaying) toggleMusic();
+        autoStartMusic();
       }, 500);
     }, 1000);
   }, 3200);
@@ -1660,6 +1699,7 @@ function initPremiumAnimations() {
   initCardGlow();
   initHeroTilt();
   setTimeout(initSoundDesign, 500);
+  initMusicUnlock();
 }
 
 
