@@ -108,16 +108,52 @@ function playStartupSound() {
 let musicCtx = null, musicPlaying = false, musicNodes = [];
 
 function toggleMusic() {
+  // Кнопка ♪ — пауза / продолжение с того же места
+  if (musicPlaying) pauseMusic();
+  else resumeMusic();
+}
+
+function setMusicBtn(on) {
   const btn = document.getElementById('music-btn');
-  if (musicPlaying) {
-    stopMusic();
-    btn.classList.remove('playing');
-    btn.textContent = '♪';
+  if (!btn) return;
+  btn.classList.toggle('playing', on);
+  btn.textContent = on ? '♫' : '♪';
+}
+
+// Пауза без сброса позиции (mp3 продолжится ровно с того места, где остановился)
+function pauseMusic() {
+  if (!musicPlaying) return;
+  musicPlaying = false;
+  if (musicAudio) {
+    try { musicAudio.pause(); } catch(e) {}
+  } else {
+    // Генеративная мелодия позиции не имеет — просто останавливаем
+    musicNodes.forEach(n => { try { n.stop(); } catch(e){} });
+    musicNodes = [];
+    if (musicCtx) { try { musicCtx.close(); } catch(e){} }
+  }
+  setMusicBtn(false);
+}
+
+function resumeMusic() {
+  if (musicPlaying) return;
+  if (musicAudio) {
+    musicAudio.play().catch(e => console.log('Не удалось продолжить музыку:', e));
+    musicPlaying = true;
   } else {
     startMusic();
-    btn.classList.add('playing');
-    btn.textContent = '♫';
   }
+  setMusicBtn(true);
+}
+
+// На время видео эпизода музыка ставится на паузу, после — продолжается с того же места.
+// Если пользователь сам выключил музыку кнопкой — после видео она остаётся выключенной.
+let musicResumeAfterVideo = false;
+function pauseMusicForVideo() {
+  if (musicPlaying) { musicResumeAfterVideo = true; pauseMusic(); }
+}
+function resumeMusicAfterVideo() {
+  if (musicResumeAfterVideo) { musicResumeAfterVideo = false; resumeMusic(); }
 }
 
 let musicAudio = null;
@@ -966,8 +1002,8 @@ function playEp(i) {
   const v = document.getElementById('pl-video');
   v.pause();
   document.getElementById('pl-toast').classList.remove('show');
-  // Останавливаем фоновую музыку сразу, не дожидаясь конца анимации перехода
-  if (musicPlaying) toggleMusic();
+  // Ставим фоновую музыку на паузу сразу, не дожидаясь конца анимации перехода
+  pauseMusicForVideo();
   showEpIntro(i, () => {
     cur = i;
     const ep = eps[i];
@@ -1129,8 +1165,8 @@ function goBack() {
   document.getElementById('browse').style.display = 'block';
   isMini = false;
   stopVoice();
-  // Возобновляем фоновую музыку после выхода из эпизода
-  if (!musicPlaying) toggleMusic();
+  // Продолжаем фоновую музыку с того же места после выхода из эпизода
+  resumeMusicAfterVideo();
 }
 
 /* ═══ ESC ═══ */
@@ -1624,7 +1660,6 @@ function initPremiumAnimations() {
   initCardGlow();
   initHeroTilt();
   setTimeout(initSoundDesign, 500);
-  setTimeout(initMusicAutoStop, 800);
 }
 
 
